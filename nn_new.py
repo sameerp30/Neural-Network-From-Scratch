@@ -135,8 +135,8 @@ class Net(object):
         for i in range(length-1, -1, -1):
             if (i == length-1):
                 y = np.expand_dims(y, axis=1)
-                loss = 1/m*(self.a_states[i+1] - y)**2
-                dA = 1/m*(self.a_states[i+1] - y)*loss**(-1/2)
+                dA = 1/m*(self.a_states[i+1] - y)
+                #dA = 1/m*(self.a_states[i+1] - y)*loss**(-1/2)
                 dZ = dA
             else:
                 dA = np.dot(dZ, self.weights[i+1].T)
@@ -288,7 +288,9 @@ def loss_fn(y, y_hat, weights, biases, lamda):
     '''
 
     y = np.expand_dims(y, axis=1)
-    cost = rmse(y, y_hat) + lamda * \
+    #cost = rmse(y, y_hat) + lamda * \
+    #    loss_regularization(weights, biases)
+    cost = loss_mse(y, y_hat) + lamda * \
         loss_regularization(weights, biases)
 
     return cost
@@ -411,18 +413,21 @@ def read_data():
     '''
     Read the train, dev, and test datasets
     '''
-    df = pd.read_csv(
-        "/home/sameer/cs725-2022-assignment/regression/data/train.csv")
+    df_train = pd.read_csv(
+        "./data/train.csv")
+    df_dev = pd.read_csv(
+        "./data/dev.csv")
+    df_test = pd.read_csv(
+        "./data/test.csv")
 
-    x = df.iloc[:, :90]
-    y = df['91']
+    train_x = df_train.iloc[:, 1:92]
+    train_y = df_train['1']
+    
+    dev_x = df_dev.iloc[:, 1:92]
+    dev_y = df_dev['1']
 
-    X_train, test_input, y_train, y_test = train_test_split(
-        x, y, test_size=0.2, random_state=42)
-    train_input, dev_input, train_target, dev_target = train_test_split(
-        X_train, y_train, test_size=0.2, random_state=42)
 
-    return train_input, train_target, dev_input, dev_target, test_input
+    return train_x, train_y, dev_x, dev_y, df_test
 
 
 def main():
@@ -432,14 +437,14 @@ def main():
     batch_size = 32
     learning_rate = 0.001
     num_layers = 2
-    num_units = 128
+    num_units = 64
     lamda = 0.01  # Regularization Parameter
 
     train_input, train_target, dev_input, dev_target, test_input = read_data()
 
     scaler = MinMaxScaler()
     model = scaler.fit(train_input)
-    dev_input = model.transform(train_input)
+    train_input = model.transform(train_input)
 
     net = Net(num_layers, num_units)
     optimizer = Optimizer(learning_rate, num_layers+1)
