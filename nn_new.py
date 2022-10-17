@@ -429,6 +429,21 @@ def read_data():
 
     return train_x, train_y, dev_x, dev_y, df_test
 
+def standard_scaler(data, params):
+    columns = data.columns
+    
+    for column in columns:
+        if column not in params:
+            mean = data[column].mean()
+            std = data[column].std()
+            params[column] = {}
+            params[column]["mean"] = mean
+            params[column]["std"] = std
+        
+        data[column] -= params[column]["mean"]
+        data[column] /= params[column]["std"]
+    
+    return data
 
 def main():
 
@@ -436,15 +451,15 @@ def main():
     max_epochs = 500
     batch_size = 32
     learning_rate = 0.001
-    num_layers = 2
+    num_layers = 1
     num_units = 64
     lamda = 0.01  # Regularization Parameter
 
     train_input, train_target, dev_input, dev_target, test_input = read_data()
-
-    scaler = MinMaxScaler()
-    model = scaler.fit(train_input)
-    train_input = model.transform(train_input)
+    params = {}
+    train_input = standard_scaler(train_input, params)
+    dev_input = standard_scaler(dev_input, params)
+    test_input = standard_scaler(test_input, params)
 
     net = Net(num_layers, num_units)
     optimizer = Optimizer(learning_rate, num_layers+1)
