@@ -483,6 +483,8 @@ def evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda):
 
 def main():
 
+    global NUM_FEATS
+    NUM_FEATS = 76
     # Hyper-parameters
     max_epochs = 500
     batch_size = 32
@@ -493,9 +495,15 @@ def main():
 
     train_input, train_target, dev_input, dev_target, test_input = read_data()
     params = {}
-    train_input = standard_scaler(train_input, params).to_numpy()
-    dev_input = standard_scaler(dev_input, params).to_numpy()
-    test_input = standard_scaler(test_input, params).to_numpy()
+    train_input = standard_scaler(train_input, params)
+    dev_input = standard_scaler(dev_input, params)
+    test_input = standard_scaler(test_input, params)
+    
+    # removing more correlated features
+    corr_features = ["58", "82", "64", "80", "4", "19", "43", "28", "55", "71", "76", "15", "56", "42"]
+    train_input = train_input.drop(corr_features, axis=1).to_numpy()
+    dev_input = dev_input.drop(corr_features, axis=1).to_numpy()
+    test_input = test_input.drop(corr_features, axis=1).to_numpy()
     
     net = Net(num_layers, num_units)
     optimizer = Optimizer(learning_rate, num_layers+1)
