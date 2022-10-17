@@ -402,13 +402,10 @@ def compute_acc(net, data_input, data_target, batch_size):
         else: outputs = np.append(outputs, pred)
         
     correct = 0
-    print(np.shape(outputs))
-    print(np.shape(data_target))
     for i in range(len(outputs)):
         #print(outputs[i], data_target[i])
         if round(outputs[i]) == data_target[i]: correct += 1
     
-    print(len(data_target), len(outputs), correct)
     return 100*correct/len(data_target)
     
     
