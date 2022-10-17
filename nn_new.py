@@ -2,9 +2,6 @@ import sys
 import os
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import MinMaxScaler
 
 # The seed will be fixed to 42 for this assigmnet.
 np.random.seed(42)
@@ -377,7 +374,10 @@ def train(
 
             #print(e, i, rmse(batch_target, pred), batch_loss)
 
-        print(e, epoch_loss/int(m/batch_size))
+        dev_epoch_loss = evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda)
+        train_acc = compute_acc(net, train_input, train_target, batch_size)
+        dev_acc = compute_acc(net, dev_input, dev_target, batch_size)
+        print(e, epoch_loss/int(m/batch_size), dev_epoch_loss, train_acc, dev_acc)
 
         # Write any early stopping conditions required (only for Part 2)
         # Hint: You can also compute dev_rmse here and use it in the early
@@ -389,7 +389,29 @@ def train(
 
     #print('RMSE on dev data: {:.5f}'.format(dev_rmse))
 
-
+    
+def compute_acc(net, data_input, data_target, batch_size):
+    m = len(data_input)
+    outputs = None
+    
+    for i in range(0, m, batch_size):
+        batch_input = data_input[i:i+batch_size]
+        batch_target = data_target[i:i+batch_size]
+        pred = net(batch_input)
+        if outputs is None: outputs = pred
+        else: outputs = np.append(outputs, pred)
+        
+    correct = 0
+    print(np.shape(outputs))
+    print(np.shape(data_target))
+    for i in range(len(outputs)):
+        #print(outputs[i], data_target[i])
+        if round(outputs[i]) == data_target[i]: correct += 1
+    
+    print(len(data_target), len(outputs), correct)
+    return 100*correct/len(data_target)
+    
+    
 def get_test_data_predictions(net, inputs):
     '''
     Perform forward pass on test data and get the final predictions that can
@@ -445,6 +467,23 @@ def standard_scaler(data, params):
     
     return data
 
+def evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda):
+    m = len(dev_input)
+    
+    epoch_loss = 0
+    for i in range(0, m, batch_size):
+        batch_input = dev_input[i:i+batch_size]
+        batch_target = dev_target[i:i+batch_size]
+        pred = net(batch_input)
+        
+        batch_loss = loss_fn(batch_target, pred,
+                                 net.weights, net.biases, lamda)
+        epoch_loss += batch_loss
+
+    return epoch_loss/int(m/batch_size)
+        
+
+
 def main():
 
     # Hyper-parameters
@@ -462,6 +501,8 @@ def main():
     test_input = standard_scaler(test_input, params)
 
     net = Net(num_layers, num_units)
+    #compute_acc(net, dev_input, dev_target, batch_size)
+    #exit()
     optimizer = Optimizer(learning_rate, num_layers+1)
     train(
         net, optimizer, lamda, batch_size, max_epochs,
