@@ -493,13 +493,11 @@ def main():
 
     train_input, train_target, dev_input, dev_target, test_input = read_data()
     params = {}
-    train_input = standard_scaler(train_input, params)
-    dev_input = standard_scaler(dev_input, params)
-    test_input = standard_scaler(test_input, params)
-
+    train_input = standard_scaler(train_input, params).to_numpy()
+    dev_input = standard_scaler(dev_input, params).to_numpy()
+    test_input = standard_scaler(test_input, params).to_numpy()
+    
     net = Net(num_layers, num_units)
-    #compute_acc(net, dev_input, dev_target, batch_size)
-    #exit()
     optimizer = Optimizer(learning_rate, num_layers+1)
     train(
         net, optimizer, lamda, batch_size, max_epochs,
