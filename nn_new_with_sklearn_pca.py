@@ -266,7 +266,6 @@ def loss_regularization(weights, biases):
     weights_sum = []
     for weight in weights:
         weights_sum.append(np.sum(np.square(weight)))
-
     return np.sum(weights_sum)/2
 
     #raise NotImplementedError
@@ -352,9 +351,10 @@ def train(
     '''
 
     m = train_input.shape[0]
-
+    j=0
     for e in range(max_epochs):
         epoch_loss = 0.
+        j+=1
         for i in range(0, m, batch_size):
             batch_input = train_input[i:i+batch_size]
             batch_target = train_target[i:i+batch_size]
@@ -378,8 +378,9 @@ def train(
 
             #print(e, i, rmse(batch_target, pred), batch_loss)
 
-        print(e, epoch_loss/int(m/batch_size))
-
+        total_dev_loss=get_dev_data_predictions(net,dev_input,dev_target,lamda)
+        print(e, epoch_loss/int(m/batch_size), total_dev_loss)
+        
         # Write any early stopping conditions required (only for Part 2)
         # Hint: You can also compute dev_rmse here and use it in the early
         # 		stopping condition.
@@ -390,6 +391,37 @@ def train(
 
     #print('RMSE on dev data: {:.5f}'.format(dev_rmse))
 
+def get_dev_data_predictions(net, inputs, outputs, lamda):
+    '''
+    Perform forward pass on test data and get the final predictions that can
+    be submitted on Kaggle.
+    Write the final predictions to the part2.csv file.
+
+    Parameters
+    ----------
+            net : trained neural network
+            inputs : test input, numpy array of shape m x d
+
+    Returns
+    ----------
+            predictions (optional): Predictions obtained from forward pass
+                                                            on test data, numpy array of shape m x 1
+    '''
+    scaler = MinMaxScaler()
+    model = scaler.fit(inputs)
+    inputs = model.transform(inputs)
+    dev_size = inputs.shape[0]
+    total_dev_loss=0
+    batch_size=100
+    for i in range(0, dev_size, batch_size):
+            dev_batch_input = inputs[i:i+batch_size]
+            dev_batch_target = outputs[i:i+batch_size]
+            pred = net(dev_batch_input)
+            dev_batch_loss=loss_fn(dev_batch_target, pred,net.weights, net.biases, lamda)
+            total_dev_loss+=dev_batch_loss
+    total_dev_loss=int(total_dev_loss*batch_size/dev_size)
+    return total_dev_loss
+    #raise NotImplementedError
 
 def get_test_data_predictions(net, inputs):
     '''
@@ -437,9 +469,9 @@ def main():
     max_epochs = 500
     batch_size = 32
     learning_rate = 0.001
-    num_layers = 2
-    num_units = 64
-    lamda = 0.01  # Regularization Parameter
+    num_layers = 1
+    num_units = 256
+    lamda = 0.1  # Regularization Parameter
 
     train_input, train_target, dev_input, dev_target, test_input = read_data()
 
@@ -455,6 +487,7 @@ def main():
     dev_input=pca.transform(dev_input)
     global NUM_FEATS
     NUM_FEATS = pca.n_components_
+    print(train_input.shape)
     #####################################################
 
     net = Net(num_layers, num_units)
