@@ -2,6 +2,7 @@ import sys
 import os
 import numpy as np
 import pandas as pd
+import pickle
 
 # The seed will be fixed to 42 for this assigmnet.
 np.random.seed(42)
@@ -35,10 +36,12 @@ class Net(object):
                 num_layers : Number of HIDDEN layers.
                 num_units : Number of units in each Hidden layer.
         '''
+        
         self.biases = []
         self.weights = []
         self.num_layers = num_layers
         self.num_units = num_units
+        
         for i in range(num_layers):
             if i == 0:
                 # Input layer
@@ -77,7 +80,9 @@ class Net(object):
         a = X
         h_states = []
         a_states = []
-        for i, (w, b) in enumerate(zip(self.weights, self.biases)):
+        params = [(w,self.biases[i]) for i,w in enumerate(self.weights)]
+        
+        for i, (w, b) in enumerate(params):
             if i == 0:
                 h_states.append(a)
             else:
@@ -130,10 +135,10 @@ class Net(object):
         length = len(self.weights)
 
         for i in range(length-1, -1, -1):
+            
             if (i == length-1):
                 y = np.expand_dims(y, axis=1)
                 dA = 1/m*(self.a_states[i+1] - y)
-                #dA = 1/m*(self.a_states[i+1] - y)*loss**(-1/2)
                 dZ = dA
             else:
                 dA = np.dot(dZ, self.weights[i+1].T)
@@ -141,7 +146,8 @@ class Net(object):
 
             grads['W'][i] = 1/m * \
                 np.dot(self.a_states[i].T, dZ) + \
-                (lamda)*self.weights[i]
+                (lamda)/m * self.weights[i]
+
             grads['B'][i] = 1/m * np.sum(dZ, axis=0, keepdims=True)
             grads['B'][i] = grads['B'][i].T
 
@@ -170,6 +176,7 @@ class Optimizer(object):
         Hint: You can use the class members to track various states of the
         optimizer.
         '''
+        
         self.learning_rate = learning_rate
         self.alpha = 0.02
         self.beta1 = 0.8
@@ -180,8 +187,6 @@ class Optimizer(object):
         self.mb = [0.0 for _ in range(length)]
         self.vb = [0.0 for _ in range(length)]
         self.t = 1
-
-        #raise NotImplementedError
 
     def step(self, weights, biases, delta_weights, delta_biases):
         '''
@@ -196,7 +201,6 @@ class Optimizer(object):
 
         updated_W = []
         updated_B = []
-        # print(delta_biases[0].shape)
 
         for i in range(0, size):
 
@@ -224,8 +228,6 @@ class Optimizer(object):
         self.t += 1
 
         return updated_W, updated_B
-
-        #raise NotImplementedError
 
 
 def loss_mse(y, y_hat):
@@ -260,6 +262,7 @@ def loss_regularization(weights, biases):
             l2 regularization loss 
     '''
     weights_sum = []
+    
     for weight in weights:
         weights_sum.append(np.sum(np.square(weight)))
 
@@ -285,9 +288,8 @@ def loss_fn(y, y_hat, weights, biases, lamda):
     '''
 
     y = np.expand_dims(y, axis=1)
-    #cost = rmse(y, y_hat) + lamda * \
-    #    loss_regularization(weights, biases)
-    cost = loss_mse(y, y_hat) + lamda * \
+    
+    cost = loss_mse(y, y_hat) + (lamda/len(y)) * \
         loss_regularization(weights, biases)
 
     return cost
@@ -311,14 +313,11 @@ def loss_fn_rmse(y, y_hat, weights, biases, lamda):
     '''
 
     y = np.expand_dims(y, axis=1)
-    #cost = rmse(y, y_hat) + lamda * \
-    #    loss_regularization(weights, biases)
-    cost = rmse(y, y_hat) + lamda * \
+
+    cost = rmse(y, y_hat) + (lamda/len(y)) * \
         loss_regularization(weights, biases)
 
     return cost
-
-    #raise NotImplementedError
 
 
 def rmse(y, y_hat):
@@ -358,8 +357,7 @@ def cross_entropy_loss(y, y_hat):
 def train(
         net, optimizer, lamda, batch_size, max_epochs,
         train_input, train_target,
-        dev_input, dev_target, alpha
-):
+        dev_input, dev_target):
     '''
     In this function, you will perform following steps:
             1. Run gradient descent algorithm for `max_epochs` epochs.
@@ -374,21 +372,24 @@ def train(
     '''
 
     m = train_input.shape[0]
-    prev_loss =0.
     epoch_loss=0.
-    e=0
-    while(e<2 or abs(prev_loss-epoch_loss)>alpha):
-        prev_loss=epoch_loss
-        epoch_loss = 0.
-        e=e+1
+    patience = 5
+    j = 0  # current running dev step
+    step = 0  # it increases after pass through one batch
+    prev_dev_loss = 10000000
+    epochs = 0
+    
+    while j < patience:
+        epoch_loss = 0
         for i in range(0, m, batch_size):
-            batch_input = train_input[i:i+batch_size]
-            batch_target = train_target[i:i+batch_size]
-            pred = net(batch_input)
+            batch_input = train_input[i : i + batch_size]
+            batch_target = train_target[i : i + batch_size]
+            
+            pred = net(batch_input)  # forward pass
 
             # Compute gradients of loss w.r.t. weights and biases
             dW, db = net.backward(batch_input, batch_target, lamda)
-
+            
             # Get updated weights based on current weights and gradients
             weights_updated, biases_updated = optimizer.step(
                 net.weights, net.biases, dW, db)
@@ -401,26 +402,26 @@ def train(
             batch_loss = loss_fn(batch_target, pred,
                                  net.weights, net.biases, lamda)
             epoch_loss += batch_loss
-
-            #print(e, i, rmse(batch_target, pred), batch_loss)
+            
+            if step % 300 == 0:  # check dev loss and save model weights
+                dev_loss = evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda)
+                print("step: {} dev loss: {}".format(step, dev_loss))
+                if dev_loss < prev_dev_loss:
+                    j = 0
+                    prev_dev_loss = dev_loss
+                    # save model weights
+                    print("Saving model weights.....")
+                    with open('./model.pkl', 'wb') as outp:
+                        pickle.dump(net, outp, pickle.HIGHEST_PROTOCOL)
+                    
+                else: j += 1 
+            
+            step += 1
+        epochs += 1
         
-        epoch_loss=epoch_loss/int(m/batch_size)
-        dev_epoch_loss = evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda)
-        train_acc = compute_acc(net, train_input, train_target, batch_size)
-        dev_acc = compute_acc(net, dev_input, dev_target, batch_size)
-        #print(e,epoch_loss, prev_loss)
-        print(e,epoch_loss,prev_loss, dev_epoch_loss, train_acc, dev_acc)
-    
-
-        # Write any early stopping conditions required (only for Part 2)
-        # Hint: You can also compute dev_rmse here and use it in the early
-        # 		stopping condition.
-
-    # After running `max_epochs` (for Part 1) epochs OR early stopping (for Part 2), compute the RMSE on dev data.
-    #dev_pred = net(dev_input)
-    #dev_rmse = rmse(dev_target, dev_pred)
-
-    #print('RMSE on dev data: {:.5f}'.format(dev_rmse))
+        epoch_loss = epoch_loss*batch_size/m
+        print("epoch: {} step: {} train loss: {}".format(epochs, step, epoch_loss))
+        
 
     
 def compute_acc(net, data_input, data_target, batch_size):
@@ -477,8 +478,6 @@ def read_data():
     
     dev_x = df_dev.iloc[:, 1:92]
     dev_y = df_dev['1']
-
-    print(len(df_test))
     
     return train_x, train_y, dev_x, dev_y, df_test
 
@@ -532,6 +531,25 @@ def get_test_data_predictions(net, inputs):
     pred = net(inputs)
     return pred
 
+def save_predictions(net, test_input):
+    prediction = get_test_data_predictions(net, test_input)
+    int_prediction = []
+    
+    for i in range(len(prediction)):
+        int_prediction.append(float(prediction[i])) 
+    
+    index=[]
+    for i in range(len(int_prediction)):
+        index.append(i+1)
+    
+    datarows=[]
+    for i in range(len(int_prediction)):
+        row = []
+        row.append(index[i])
+        row.append(int_prediction[i])
+        datarows.append(row)
+    
+    final_csv = pd.DataFrame(datarows).to_csv("./sample.csv", header=['Id','Predictions'], index=False)
 
 def main():
 
@@ -539,42 +557,31 @@ def main():
     max_epochs = 500
     batch_size = 32
     learning_rate = 0.0001
-    num_layers = 2
-    num_units=[128,16]
+    num_layers = 3
+    num_units=[128, 32, 8]
     lamda = 0.01  # Regularization Parameter
     alpha = 0.0001
+    
     train_input, train_target, dev_input, dev_target, test_input = read_data()
+    
     params = {}
     train_input = standard_scaler(train_input, params)
     dev_input = standard_scaler(dev_input, params)
     test_input = standard_scaler(test_input, params)
+    
+    
     net = Net(num_layers, num_units)
     optimizer = Optimizer(learning_rate, num_layers+1)
+    
     train(
         net, optimizer, lamda, batch_size, max_epochs,
         train_input, train_target,
-        dev_input, dev_target, alpha
-    )
-    #get_test_data_predictions(net, test_input)
-    prediction=get_test_data_predictions(net, test_input)
-    int_prediction=[]
-    #s=np.round_(prediction)
-    s=prediction
-    for i in range(len(s)):
-        int_prediction.append(float(s[i])) 
-    index=[]
-    for i in range(len(int_prediction)):
-        index.append(i+1)
-    datarows=[]
-    for i in range(len(int_prediction)):
-        row=[]
-        row.append(index[i])
-        row.append(int_prediction[i])
-        datarows.append(row)
+        dev_input, dev_target)
     
-    print(len(datarows))
+    with open('./model.pkl', 'rb') as inp:
+        net = pickle.load(inp)
     
-    final_csv=pd.DataFrame(datarows).to_csv("sample.csv", header=['Id','Predictions'],index=False)
+    save_predictions(net, test_input)
     
 
 if __name__ == '__main__':
