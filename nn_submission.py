@@ -357,7 +357,7 @@ def cross_entropy_loss(y, y_hat):
 def train(
         net, optimizer, lamda, batch_size, max_epochs,
         train_input, train_target,
-        dev_input, dev_target):
+        dev_input, dev_target, patience, uid):
     '''
     In this function, you will perform following steps:
             1. Run gradient descent algorithm for `max_epochs` epochs.
@@ -373,7 +373,6 @@ def train(
 
     m = train_input.shape[0]
     epoch_loss=0.
-    patience = 25
     j = 0  # current running dev step
     step = 0  # it increases after pass through one batch
     prev_dev_loss = 10000000
@@ -412,7 +411,7 @@ def train(
                     prev_dev_loss = dev_loss
                     # save model weights
                     print("Saving model weights.....")
-                    with open('./models/model161.pkl', 'wb') as outp:
+                    with open('./models/model{}.pkl'.format(uid), 'wb') as outp:
                         pickle.dump(net, outp, pickle.HIGHEST_PROTOCOL)
                     
                 else: j += 1 
@@ -463,16 +462,16 @@ def get_test_data_predictions(net, inputs):
     raise NotImplementedError
 
 
-def read_data():
+def read_data(train_path, dev_path, test_path):
     '''
     Read the train, dev, and test datasets
     '''
     df_train = pd.read_csv(
-        "./data/train.csv")
+        train_path)
     df_dev = pd.read_csv(
-        "./data/dev.csv")
+        dev_path)
     df_test = pd.read_csv(
-        "./data/test.csv")
+        test_path)
 
     train_x = df_train.iloc[:, 1:92]
     train_y = df_train['1']
@@ -552,7 +551,7 @@ def get_dev_data_predictions(net, inputs):
     pred = net(inputs)
     return pred
 
-def save_predictions_for_analysis(net, dev_input, dev_target):
+def save_predictions_for_analysis(net, dev_input, dev_target, uid):
     prediction = get_dev_data_predictions(net, dev_input)
     int_prediction = []
     
@@ -571,10 +570,10 @@ def save_predictions_for_analysis(net, dev_input, dev_target):
         row.append(dev_target[i])
         datarows.append(row)
     
-    final_csv = pd.DataFrame(datarows).to_csv("./models/sample_analysis161.csv", header=['Id','Predictions','labels'], index=False)
+    final_csv = pd.DataFrame(datarows).to_csv("./models/sample_analysis{}.csv".format(uid), header=['Id','Predictions','labels'], index=False)
 
 
-def save_predictions(net, test_input):
+def save_predictions(net, test_input, uid):
     prediction = get_test_data_predictions(net, test_input)
     int_prediction = []
     
@@ -592,7 +591,7 @@ def save_predictions(net, test_input):
         row.append(int_prediction[i])
         datarows.append(row)
     
-    final_csv = pd.DataFrame(datarows).to_csv("./models/sample161.csv", header=['Id','Predictions'], index=False)
+    final_csv = pd.DataFrame(datarows).to_csv("./models/sample{}.csv".format(uid), header=['Id','Predictions'], index=False)
 
 def feature_sel_corr_matrix(train_input, train_target, dev_input, test_input):
     
@@ -626,8 +625,14 @@ def main():
     num_layers = 1
     num_units=[64]
     lamda = 0.01  # Regularization Parameter
+    uid = 162
+    patience = 18
     
-    train_input, train_target, dev_input, dev_target, test_input = read_data()
+    train_path = "./data/train_new.csv"
+    dev_path = "./data/dev.csv"
+    test_path = "./data/test.csv"
+    
+    train_input, train_target, dev_input, dev_target, test_input = read_data(train_path, dev_path, test_path)
     #from sklearn.decomposition import PCA
     
     train_input, dev_input, test_input, len_corr_features = feature_sel_corr_matrix(train_input, train_target, dev_input, test_input)
@@ -640,6 +645,7 @@ def main():
     train_input = standard_scaler(train_input, params)
     dev_input = standard_scaler(dev_input, params)
     test_input = standard_scaler(test_input, params)
+    print(train_input.shape)
     
 #     NUM_FEATS = 65
 #     pca = PCA(n_components=NUM_FEATS)
@@ -655,13 +661,13 @@ def main():
     train(
         net, optimizer, lamda, batch_size, max_epochs,
         train_input, train_target,
-        dev_input, dev_target)
+        dev_input, dev_target, patience, uid)
     
-    with open('./models/model161.pkl', 'rb') as inp:
+    with open('./models/model{}.pkl'.format(uid), 'rb') as inp:
         net = pickle.load(inp)
     
-    save_predictions(net, test_input)
-    save_predictions_for_analysis(net, dev_input, dev_target)
+    save_predictions(net, test_input, uid)
+    save_predictions_for_analysis(net, dev_input, dev_target, uid)
     
 
 if __name__ == '__main__':
