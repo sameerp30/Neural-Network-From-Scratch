@@ -373,7 +373,7 @@ def train(
 
     m = train_input.shape[0]
     epoch_loss=0.
-    patience = 15
+    patience = 25
     j = 0  # current running dev step
     step = 0  # it increases after pass through one batch
     prev_dev_loss = 10000000
@@ -412,7 +412,7 @@ def train(
                     prev_dev_loss = dev_loss
                     # save model weights
                     print("Saving model weights.....")
-                    with open('./model149.pkl', 'wb') as outp:
+                    with open('./models/model161.pkl', 'wb') as outp:
                         pickle.dump(net, outp, pickle.HIGHEST_PROTOCOL)
                     
                 else: j += 1 
@@ -548,6 +548,32 @@ def get_test_data_predictions(net, inputs):
     pred = net(inputs)
     return pred
 
+def get_dev_data_predictions(net, inputs):
+    pred = net(inputs)
+    return pred
+
+def save_predictions_for_analysis(net, dev_input, dev_target):
+    prediction = get_dev_data_predictions(net, dev_input)
+    int_prediction = []
+    
+    for i in range(len(prediction)):
+        int_prediction.append(float(prediction[i])) 
+    
+    index=[]
+    for i in range(len(int_prediction)):
+        index.append(i+1)
+    
+    datarows=[]
+    for i in range(len(int_prediction)):
+        row = []
+        row.append(index[i])
+        row.append(int_prediction[i])
+        row.append(dev_target[i])
+        datarows.append(row)
+    
+    final_csv = pd.DataFrame(datarows).to_csv("./models/sample_analysis161.csv", header=['Id','Predictions','labels'], index=False)
+
+
 def save_predictions(net, test_input):
     prediction = get_test_data_predictions(net, test_input)
     int_prediction = []
@@ -566,24 +592,61 @@ def save_predictions(net, test_input):
         row.append(int_prediction[i])
         datarows.append(row)
     
-    final_csv = pd.DataFrame(datarows).to_csv("./sample149.csv", header=['Id','Predictions'], index=False)
+    final_csv = pd.DataFrame(datarows).to_csv("./models/sample161.csv", header=['Id','Predictions'], index=False)
 
+def feature_sel_corr_matrix(train_input, train_target, dev_input, test_input):
+    
+    train_ip = pd.concat([train_target,train_input], axis = 1)
+    correlation_matrix = train_ip.corr()
+    correlated_features = set()
+    
+    for i in range(len(correlation_matrix .columns)):
+        if abs(correlation_matrix.iloc[1, i]) <0.1:
+                colname = correlation_matrix.columns[i]
+                correlated_features.add(colname)
+
+            
+    len_corr_features=len(correlated_features)
+    
+    print(correlated_features)
+    
+    train_input.drop(labels=correlated_features, axis=1, inplace=True)
+    dev_input.drop(labels=correlated_features, axis=1, inplace=True)
+    test_input.drop(labels=correlated_features, axis=1, inplace=True)
+    
+    return train_input,dev_input,test_input,len_corr_features    
+    
 def main():
 
     # Hyper-parameters
+    global NUM_FEATS
     max_epochs = 500
     batch_size = 32
-    learning_rate = 0.0001
+    learning_rate = 0.001
     num_layers = 1
-    num_units=[32]
-    lamda = 0.1  # Regularization Parameter
+    num_units=[64]
+    lamda = 0.01  # Regularization Parameter
     
     train_input, train_target, dev_input, dev_target, test_input = read_data()
+    #from sklearn.decomposition import PCA
+    
+    train_input, dev_input, test_input, len_corr_features = feature_sel_corr_matrix(train_input, train_target, dev_input, test_input)
+    NUM_FEATS = NUM_FEATS -(len_corr_features)
+    print(NUM_FEATS)
+    print("********************************")
+    
     
     params = {}
     train_input = standard_scaler(train_input, params)
     dev_input = standard_scaler(dev_input, params)
     test_input = standard_scaler(test_input, params)
+    
+#     NUM_FEATS = 65
+#     pca = PCA(n_components=NUM_FEATS)
+#     pca.fit(train_input)
+#     train_input = pca.transform(train_input)
+#     dev_input = pca.transform(dev_input)
+#     test_input = pca.transform(test_input)
     
     
     net = Net(num_layers, num_units)
@@ -594,10 +657,11 @@ def main():
         train_input, train_target,
         dev_input, dev_target)
     
-    with open('./model149.pkl', 'rb') as inp:
+    with open('./models/model161.pkl', 'rb') as inp:
         net = pickle.load(inp)
     
     save_predictions(net, test_input)
+    save_predictions_for_analysis(net, dev_input, dev_target)
     
 
 if __name__ == '__main__':
