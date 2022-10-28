@@ -51,11 +51,18 @@ class Net(object):
             self.biases.append(np.random.uniform(-1, 1, size=(num_units, 1)))
 
         # Output layer
-        self.biases.append(np.random.uniform(-1, 1, size=(1, 1)))
-        self.weights.append(np.random.uniform(-1, 1, size=(num_units, 1)))
+        self.biases.append(np.random.uniform(-1, 1, size=(4, 1)))
+        self.weights.append(np.random.uniform(-1, 1, size=(num_units, 4)))
 
-    def relu(self, M):
-        return M * (M > 0)
+    def relu(self, a):
+        return a * (a > 0)
+    
+    def softmax(self, a):
+        for i, instance in enumerate(a):
+            a[i] = np.exp(a[i] - np.max(a[i]))
+            a[i] = a[i]/np.sum(a[i])
+            
+        return a
 
     def __call__(self, X):
         '''
@@ -70,7 +77,7 @@ class Net(object):
                 X : Input to the network, numpy array of shape m x d
         Returns
         ----------
-                y : Output of the network, numpy array of shape m x 1
+                y : Output of the network, numpy array of shape m x 4
         '''
 
         a = X
@@ -88,7 +95,7 @@ class Net(object):
             if i < len(self.weights)-1:
                 a = self.relu(h)
             else:
-                a = h
+                a = self.softmax(h)
 
         pred = a
 
@@ -100,6 +107,7 @@ class Net(object):
 
         return pred
 
+                        
     def backward(self, X, y, lamda):
         '''
         Compute and return gradients loss with respect to weights and biases.
@@ -108,7 +116,7 @@ class Net(object):
         Parameters
         ----------
                 X : Input to the network, numpy array of shape m x d
-                y : Output of the network, numpy array of shape m x 1
+                y : Output of the network, numpy array of shape m x 4
                 lamda : Regularization parameter.
 
         Returns
@@ -130,10 +138,7 @@ class Net(object):
 
         for i in range(length-1, -1, -1):
             if (i == length-1):
-                y = np.expand_dims(y, axis=1)
-                dA = 1/m*(self.a_states[i+1] - y)
-                #dA = 1/m*(self.a_states[i+1] - y)*loss**(-1/2)
-                dZ = dA
+                dZ = self.a_states[i+1] - y
             else:
                 dA = np.dot(dZ, self.weights[i+1].T)
                 dZ = np.multiply(dA, np.int64(self.h_states[i+1] > 0))
@@ -282,11 +287,8 @@ def loss_fn(y, y_hat, weights, biases, lamda):
     ----------
             l2 regularization loss 
     '''
-
-    y = np.expand_dims(y, axis=1)
-    #cost = rmse(y, y_hat) + lamda * \
-    #    loss_regularization(weights, biases)
-    cost = loss_mse(y, y_hat) + lamda * \
+    
+    cost = cross_entropy_loss(y, y_hat) + lamda * \
         loss_regularization(weights, biases)
 
     return cost
@@ -318,14 +320,19 @@ def cross_entropy_loss(y, y_hat):
 
     Parameters
     ----------
-            y : targets, numpy array of shape m x 1
-            y_hat : predictions, numpy array of shape m x 1
+            y : targets, numpy array of shape m x 4
+            y_hat : predictions, numpy array of shape m x 4
 
     Returns
     ----------
             cross entropy loss
     '''
-    #raise NotImplementedError
+    for i,y_ in enumerate(y_hat):
+        for j,_ in enumerate(y_):
+            y_hat[i][j] += 1e-8
+    
+    cost = 1/(len(y)) * np.sum(np.sum(-1*np.multiply(y, np.log(y_hat)), axis=1, keepdims=True))
+    return cost
 
 
 def train(
@@ -377,6 +384,7 @@ def train(
         train_acc = compute_acc(net, train_input, train_target, batch_size)
         dev_acc = compute_acc(net, dev_input, dev_target, batch_size)
         print(e, epoch_loss/int(m/batch_size), dev_epoch_loss, train_acc, dev_acc)
+        #print(e, epoch_loss/int(m/batch_size), dev_epoch_loss)
 
         # Write any early stopping conditions required (only for Part 2)
         # Hint: You can also compute dev_rmse here and use it in the early
@@ -391,19 +399,18 @@ def train(
     
 def compute_acc(net, data_input, data_target, batch_size):
     m = len(data_input)
-    outputs = None
+    outputs = []
     
     for i in range(0, m, batch_size):
         batch_input = data_input[i:i+batch_size]
         batch_target = data_target[i:i+batch_size]
         pred = net(batch_input)
-        if outputs is None: outputs = pred
-        else: outputs = np.append(outputs, pred)
+        #print(pred)
+        outputs += [list(out) for out in pred]
         
     correct = 0
     for i in range(len(outputs)):
-        #print(outputs[i], data_target[i])
-        if round(outputs[i]) == data_target[i]: correct += 1
+        if np.argmax(outputs[i]) == np.argmax(data_target[i]): correct += 1
     
     return 100*correct/len(data_target)
     
@@ -427,23 +434,32 @@ def get_test_data_predictions(net, inputs):
     raise NotImplementedError
 
 
+def transform(x, labels):
+    y = [0, 0, 0, 0]
+    y[labels[x]] = 1
+    return y
+                          
 def read_data():
     '''
     Read the train, dev, and test datasets
     '''
+    labels = {"Very Old": 0, "Old": 1, "New": 2, "Recent": 3}
+    
     df_train = pd.read_csv(
-        "./data/train.csv")
+        "./data/train_clss.csv")
     df_dev = pd.read_csv(
-        "./data/dev.csv")
+        "./data/dev_clss.csv")
     df_test = pd.read_csv(
-        "./data/test.csv")
+        "./data/test_clss.csv")
 
     train_x = df_train.iloc[:, 1:92]
+    df_train["1"] = df_train["1"].apply(lambda x: transform(x, labels))
     train_y = df_train['1']
     
+    
     dev_x = df_dev.iloc[:, 1:92]
+    df_dev["1"] = df_dev["1"].apply(lambda x: transform(x, labels))
     dev_y = df_dev['1']
-
 
     return train_x, train_y, dev_x, dev_y, df_test
 
@@ -482,15 +498,15 @@ def evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda):
 
 def main():
 
-    global NUM_FEATS
-    NUM_FEATS = 76
+    #global NUM_FEATS
+    #NUM_FEATS = 76
     # Hyper-parameters
     max_epochs = 500
     batch_size = 32
     learning_rate = 0.001
     num_layers = 1
-    num_units = 64
-    lamda = 0.01  # Regularization Parameter
+    num_units = 128
+    lamda = 0.001  # Regularization Parameter
 
     train_input, train_target, dev_input, dev_target, test_input = read_data()
     params = {}
@@ -498,12 +514,16 @@ def main():
     dev_input = standard_scaler(dev_input, params)
     test_input = standard_scaler(test_input, params)
     
-    # removing more correlated features
-    corr_features = ["58", "82", "64", "80", "4", "19", "43", "28", "55", "71", "76", "15", "56", "42"]
-    train_input = train_input.drop(corr_features, axis=1).to_numpy()
-    dev_input = dev_input.drop(corr_features, axis=1).to_numpy()
-    test_input = test_input.drop(corr_features, axis=1).to_numpy()
+    train_input = train_input.to_numpy()
+    dev_input = dev_input.to_numpy()
+    test_input = test_input.to_numpy()
     
+    train_target = train_target.to_numpy()
+    dev_target = dev_target.to_numpy()
+    
+    train_target = [list(y) for y in train_target]
+    dev_target = [list(y) for y in dev_target]
+                          
     net = Net(num_layers, num_units)
     optimizer = Optimizer(learning_rate, num_layers+1)
     train(
