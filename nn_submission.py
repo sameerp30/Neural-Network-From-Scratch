@@ -188,7 +188,7 @@ class Optimizer(object):
         self.vb = [0.0 for _ in range(length)]
         self.t = 1
 
-    def step(self, weights, biases, delta_weights, delta_biases):
+    def step_adam(self, weights, biases, delta_weights, delta_biases):
         '''
         Parameters
         ----------
@@ -226,6 +226,28 @@ class Optimizer(object):
                              mbhat / (np.sqrt(vbhat) + self.eps))
 
         self.t += 1
+
+        return updated_W, updated_B
+    
+    def step_sgd(self, weights, biases, delta_weights, delta_biases):
+        '''
+        Parameters
+        ----------
+                weights: Current weights of the network.
+                biases: Current biases of the network.
+                delta_weights: Gradients of weights with respect to loss.
+                delta_biases: Gradients of biases with respect to loss.
+        '''
+        size = len(weights)
+
+        updated_W = []
+        updated_B = []
+
+        for i in range(0, size):
+
+            updated_W.append(
+                weights[i] - self.learning_rate * delta_weights[i])
+            updated_B.append(biases[i] - self.learning_rate * delta_biases[i])
 
         return updated_W, updated_B
 
@@ -353,24 +375,9 @@ def cross_entropy_loss(y, y_hat):
     '''
     #raise NotImplementedError
 
-
-def train(
-        net, optimizer, lamda, batch_size, max_epochs,
+def train_early(net, optimizer, lamda, batch_size, max_epochs,
         train_input, train_target,
-        dev_input, dev_target, patience, uid):
-    '''
-    In this function, you will perform following steps:
-            1. Run gradient descent algorithm for `max_epochs` epochs.
-            2. For each bach of the training data
-                    1.1 Compute gradients
-                    1.2 Update weights and biases using step() of optimizer.
-            3. Compute RMSE on dev data after running `max_epochs` epochs.
-
-    Here we have added the code to loop over batches and perform backward pass
-    for each batch in the loop.
-    For this code also, you are free to heavily modify it.
-    '''
-
+        dev_input, dev_target, patience, uid, optimize):
     m = train_input.shape[0]
     epoch_loss=0.
     j = 0  # current running dev step
@@ -390,8 +397,12 @@ def train(
             dW, db = net.backward(batch_input, batch_target, lamda)
             
             # Get updated weights based on current weights and gradients
-            weights_updated, biases_updated = optimizer.step(
-                net.weights, net.biases, dW, db)
+            if optimize == "adam":
+                weights_updated, biases_updated = optimizer.step_adam(
+                    net.weights, net.biases, dW, db)
+            else:
+                weights_updated, biases_updated = optimizer.step_sgd(
+                    net.weights, net.biases, dW, db)
 
             # Update model's weights and biases
             net.weights = weights_updated
@@ -421,6 +432,84 @@ def train(
         
         epoch_loss = epoch_loss*batch_size/m
         print("epoch: {} step: {} train loss: {}".format(epochs, step, epoch_loss))
+
+def train_epochs(net, optimizer, lamda, batch_size, max_epochs,
+        train_input, train_target,
+        dev_input, dev_target, patience, uid, optimize):
+    
+    m = train_input.shape[0]
+    epoch_loss=0.
+    step = 0  # it increases after pass through one batch
+    prev_dev_loss = 10000000
+    
+    for epochs in range(max_epochs):
+        
+        epoch_loss = 0
+        for i in range(0, m, batch_size):
+            batch_input = train_input[i : i + batch_size]
+            batch_target = train_target[i : i + batch_size]
+            
+            pred = net(batch_input)  # forward pass
+
+            # Compute gradients of loss w.r.t. weights and biases
+            dW, db = net.backward(batch_input, batch_target, lamda)
+            
+            # Get updated weights based on current weights and gradients
+            if optimize == "adam":
+                weights_updated, biases_updated = optimizer.step_adam(
+                    net.weights, net.biases, dW, db)
+            else:
+                weights_updated, biases_updated = optimizer.step_sgd(
+                    net.weights, net.biases, dW, db)
+
+            # Update model's weights and biases
+            net.weights = weights_updated
+            net.biases = biases_updated
+
+            # Compute loss for the batch
+            batch_loss = loss_fn(batch_target, pred,
+                                 net.weights, net.biases, lamda)
+            epoch_loss += batch_loss
+            
+            if step % 300 == 0:  # check dev loss and save model weights
+                dev_loss_rmse = evaluate_dev_loss_rmse(net, dev_input, dev_target, batch_size, lamda)
+                dev_loss= evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda)
+                print("step: {} dev loss rmse: {} dev loss: {}".format(step, dev_loss_rmse, dev_loss))
+                if dev_loss < prev_dev_loss:
+                    prev_dev_loss = dev_loss
+                    # save model weights
+                    print("Saving model weights.....")
+                    with open('./models/model{}.pkl'.format(uid), 'wb') as outp:
+                        pickle.dump(net, outp, pickle.HIGHEST_PROTOCOL)
+            
+            step += 1
+        
+        epoch_loss = epoch_loss*batch_size/m
+        print("epoch: {} step: {} train loss: {}".format(epochs, step, epoch_loss))
+
+def train(
+        net, optimizer, lamda, batch_size, max_epochs,
+        train_input, train_target,
+        dev_input, dev_target, patience, uid, optimize, early_stop):
+    '''
+    In this function, you will perform following steps:
+            1. Run gradient descent algorithm for `max_epochs` epochs.
+            2. For each bach of the training data
+                    1.1 Compute gradients
+                    1.2 Update weights and biases using step() of optimizer.
+            3. Compute RMSE on dev data after running `max_epochs` epochs.
+
+    Here we have added the code to loop over batches and perform backward pass
+    for each batch in the loop.
+    For this code also, you are free to heavily modify it.
+    '''
+
+    if early_stop:
+        train_early(net, optimizer, lamda, batch_size, max_epochs, train_input, train_target,
+        dev_input, dev_target, patience, uid, optimize)
+    else:
+        train_epochs(net, optimizer, lamda, batch_size, max_epochs, train_input, train_target,
+        dev_input, dev_target, patience, uid, optimize)
         
 
     
@@ -619,14 +708,15 @@ def main():
 
     # Hyper-parameters
     global NUM_FEATS
-    max_epochs = 500
-    batch_size = 32
+    max_epochs = 700
+    batch_size = 64
     learning_rate = 0.001
     num_layers = 1
     num_units=[64]
     lamda = 0.01  # Regularization Parameter
-    uid = 162
-    patience = 18
+    uid = 166
+    patience = 32
+    optimize = "adam"
     
     train_path = "./data/train_new.csv"
     dev_path = "./data/dev.csv"
@@ -661,7 +751,7 @@ def main():
     train(
         net, optimizer, lamda, batch_size, max_epochs,
         train_input, train_target,
-        dev_input, dev_target, patience, uid)
+        dev_input, dev_target, patience, uid, optimize, False)
     
     with open('./models/model{}.pkl'.format(uid), 'rb') as inp:
         net = pickle.load(inp)
