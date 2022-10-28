@@ -373,7 +373,7 @@ def train(
 
     m = train_input.shape[0]
     epoch_loss=0.
-    patience = 5
+    patience = 15
     j = 0  # current running dev step
     step = 0  # it increases after pass through one batch
     prev_dev_loss = 10000000
@@ -404,14 +404,15 @@ def train(
             epoch_loss += batch_loss
             
             if step % 300 == 0:  # check dev loss and save model weights
-                dev_loss = evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda)
-                print("step: {} dev loss: {}".format(step, dev_loss))
+                dev_loss_rmse = evaluate_dev_loss_rmse(net, dev_input, dev_target, batch_size, lamda)
+                dev_loss= evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda)
+                print("step: {} dev loss rmse: {} dev loss: {}".format(step, dev_loss_rmse, dev_loss))
                 if dev_loss < prev_dev_loss:
                     j = 0
                     prev_dev_loss = dev_loss
                     # save model weights
                     print("Saving model weights.....")
-                    with open('./model.pkl', 'wb') as outp:
+                    with open('./model149.pkl', 'wb') as outp:
                         pickle.dump(net, outp, pickle.HIGHEST_PROTOCOL)
                     
                 else: j += 1 
@@ -497,7 +498,7 @@ def standard_scaler(data, params):
     
     return data
 
-def evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda):
+def evaluate_dev_loss_rmse(net, dev_input, dev_target, batch_size, lamda):
     m = len(dev_input)
     
     epoch_loss = 0
@@ -511,6 +512,22 @@ def evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda):
         epoch_loss += batch_loss
 
     return epoch_loss/int(m/batch_size)
+
+def evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda):
+    m = len(dev_input)
+    
+    epoch_loss = 0
+    for i in range(0, m, batch_size):
+        batch_input = dev_input[i:i+batch_size]
+        batch_target = dev_target[i:i+batch_size]
+        pred = net(batch_input)
+        
+        batch_loss = loss_fn(batch_target, pred,
+                                 net.weights, net.biases, lamda)
+        epoch_loss += batch_loss
+
+    return epoch_loss/int(m/batch_size)
+
         
 def get_test_data_predictions(net, inputs):
     '''
@@ -549,7 +566,7 @@ def save_predictions(net, test_input):
         row.append(int_prediction[i])
         datarows.append(row)
     
-    final_csv = pd.DataFrame(datarows).to_csv("./sample.csv", header=['Id','Predictions'], index=False)
+    final_csv = pd.DataFrame(datarows).to_csv("./sample149.csv", header=['Id','Predictions'], index=False)
 
 def main():
 
@@ -557,10 +574,9 @@ def main():
     max_epochs = 500
     batch_size = 32
     learning_rate = 0.0001
-    num_layers = 3
-    num_units=[128, 32, 8]
-    lamda = 0.01  # Regularization Parameter
-    alpha = 0.0001
+    num_layers = 1
+    num_units=[32]
+    lamda = 0.1  # Regularization Parameter
     
     train_input, train_target, dev_input, dev_target, test_input = read_data()
     
@@ -578,7 +594,7 @@ def main():
         train_input, train_target,
         dev_input, dev_target)
     
-    with open('./model.pkl', 'rb') as inp:
+    with open('./model149.pkl', 'rb') as inp:
         net = pickle.load(inp)
     
     save_predictions(net, test_input)
