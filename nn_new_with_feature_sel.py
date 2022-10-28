@@ -2,10 +2,6 @@ import sys
 import os
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.decomposition import PCA
 
 # The seed will be fixed to 42 for this assigmnet.
 np.random.seed(42)
@@ -266,6 +262,7 @@ def loss_regularization(weights, biases):
     weights_sum = []
     for weight in weights:
         weights_sum.append(np.sum(np.square(weight)))
+
     return np.sum(weights_sum)/2
 
     #raise NotImplementedError
@@ -351,10 +348,9 @@ def train(
     '''
 
     m = train_input.shape[0]
-    j=0
+
     for e in range(max_epochs):
         epoch_loss = 0.
-        j+=1
         for i in range(0, m, batch_size):
             batch_input = train_input[i:i+batch_size]
             batch_target = train_target[i:i+batch_size]
@@ -378,9 +374,11 @@ def train(
 
             #print(e, i, rmse(batch_target, pred), batch_loss)
 
-        total_dev_loss=get_dev_data_predictions(net,dev_input,dev_target,lamda)
-        print(e, epoch_loss/int(m/batch_size), total_dev_loss)
-        
+        dev_epoch_loss = evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda)
+        train_acc = compute_acc(net, train_input, train_target, batch_size)
+        dev_acc = compute_acc(net, dev_input, dev_target, batch_size)
+        print(e, epoch_loss/int(m/batch_size), dev_epoch_loss, train_acc, dev_acc)
+
         # Write any early stopping conditions required (only for Part 2)
         # Hint: You can also compute dev_rmse here and use it in the early
         # 		stopping condition.
@@ -391,38 +389,26 @@ def train(
 
     #print('RMSE on dev data: {:.5f}'.format(dev_rmse))
 
-def get_dev_data_predictions(net, inputs, outputs, lamda):
-    '''
-    Perform forward pass on test data and get the final predictions that can
-    be submitted on Kaggle.
-    Write the final predictions to the part2.csv file.
-
-    Parameters
-    ----------
-            net : trained neural network
-            inputs : test input, numpy array of shape m x d
-
-    Returns
-    ----------
-            predictions (optional): Predictions obtained from forward pass
-                                                            on test data, numpy array of shape m x 1
-    '''
-    scaler = MinMaxScaler()
-    model = scaler.fit(inputs)
-    inputs = model.transform(inputs)
-    dev_size = inputs.shape[0]
-    total_dev_loss=0
-    batch_size=100
-    for i in range(0, dev_size, batch_size):
-            dev_batch_input = inputs[i:i+batch_size]
-            dev_batch_target = outputs[i:i+batch_size]
-            pred = net(dev_batch_input)
-            dev_batch_loss=loss_fn(dev_batch_target, pred,net.weights, net.biases, lamda)
-            total_dev_loss+=dev_batch_loss
-    total_dev_loss=int(total_dev_loss*batch_size/dev_size)
-    return total_dev_loss
-    #raise NotImplementedError
-
+    
+def compute_acc(net, data_input, data_target, batch_size):
+    m = len(data_input)
+    outputs = None
+    
+    for i in range(0, m, batch_size):
+        batch_input = data_input[i:i+batch_size]
+        batch_target = data_target[i:i+batch_size]
+        pred = net(batch_input)
+        if outputs is None: outputs = pred
+        else: outputs = np.append(outputs, pred)
+        
+    correct = 0
+    for i in range(len(outputs)):
+        #print(outputs[i], data_target[i])
+        if round(outputs[i]) == data_target[i]: correct += 1
+    
+    return 100*correct/len(data_target)
+    
+    
 def get_test_data_predictions(net, inputs):
     '''
     Perform forward pass on test data and get the final predictions that can
@@ -461,35 +447,82 @@ def read_data():
 
 
     return train_x, train_y, dev_x, dev_y, df_test
+    
+def feature_sel_corr_matrix(train_input,train_target,dev_input,test_input):
+    train_ip=pd.concat([train_target,train_input], axis = 1)
+    correlation_matrix=train_ip.corr()
+    correlated_features = set()
+    for i in range(len(correlation_matrix .columns)):
+        if abs(correlation_matrix.iloc[1, i]) <0.1:
+                colname = correlation_matrix.columns[i]
+                correlated_features.add(colname)
+
+            
+    len_corr_features=len(correlated_features)
+    print(correlated_features)
+    train_input.drop(labels=correlated_features, axis=1, inplace=True)
+    dev_input.drop(labels=correlated_features, axis=1, inplace=True)
+    test_input.drop(labels=correlated_features, axis=1, inplace=True)
+    
+    return train_input,dev_input,test_input,len_corr_features
+    
+
+def standard_scaler(data, params):
+    columns = data.columns
+    
+    for column in columns:
+        if column not in params:
+            mean = data[column].mean()
+            std = data[column].std()
+            params[column] = {}
+            params[column]["mean"] = mean
+            params[column]["std"] = std
+        
+        data[column] -= params[column]["mean"]
+        data[column] /= params[column]["std"]
+    
+    return data
+
+def evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda):
+    m = len(dev_input)
+    
+    epoch_loss = 0
+    for i in range(0, m, batch_size):
+        batch_input = dev_input[i:i+batch_size]
+        batch_target = dev_target[i:i+batch_size]
+        pred = net(batch_input)
+        
+        batch_loss = loss_fn(batch_target, pred,
+                                 net.weights, net.biases, lamda)
+        epoch_loss += batch_loss
+
+    return epoch_loss/int(m/batch_size)
+        
 
 
 def main():
 
+    global NUM_FEATS
     # Hyper-parameters
     max_epochs = 500
     batch_size = 32
     learning_rate = 0.001
     num_layers = 1
-    num_units = 256
-    lamda = 0.1  # Regularization Parameter
+    num_units = 64
+    lamda = 0.01  # Regularization Parameter
 
     train_input, train_target, dev_input, dev_target, test_input = read_data()
-
-    scaler = MinMaxScaler()
-    model = scaler.fit(train_input)
-    train_input = model.transform(train_input)
+    params = {}
+    train_input = standard_scaler(train_input, params)
+    dev_input = standard_scaler(dev_input, params)
+    test_input = standard_scaler(test_input, params)
     
-    ##########to be replaced if sklearn is not allowed ######
-    pca = PCA(.95)  #to be changed for experimentation
-    pca.fit(train_input)
-    print("pca components",pca.n_components_)
-    train_input=pca.transform(train_input)
-    dev_input=pca.transform(dev_input)
-    global NUM_FEATS
-    NUM_FEATS = pca.n_components_
-    print(train_input.shape)
-    #####################################################
-
+    # removing more correlated features
+    train_input,dev_input,test_input,len_corr_features = feature_sel_corr_matrix(train_input,train_target,dev_input,test_input)
+    NUM_FEATS = NUM_FEATS -(len_corr_features)
+    print(NUM_FEATS)
+    print("********************************")
+    
     net = Net(num_layers, num_units)
     optimizer = Optimizer(learning_rate, num_layers+1)
     train(

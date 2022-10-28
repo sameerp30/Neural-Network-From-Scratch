@@ -3,3 +3,4 @@
 data/
 .ipynb_checkpoints/
 .~lock.train.csv#
+models/
