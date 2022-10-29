@@ -2,6 +2,7 @@ import sys
 import os
 import numpy as np
 import pandas as pd
+import pickle
 
 # The seed will be fixed to 42 for this assigmnet.
 np.random.seed(42)
@@ -42,17 +43,17 @@ class Net(object):
             if i == 0:
                 # Input layer
                 self.weights.append(
-                    np.random.uniform(-1, 1, size=(NUM_FEATS, num_units)))
+                    np.random.uniform(-1, 1, size=(NUM_FEATS, num_units[i])))
             else:
                 # Hidden layer
                 self.weights.append(
-                    np.random.uniform(-1, 1, size=(num_units, num_units)))
+                    np.random.uniform(-1, 1, size=(num_units[i-1], num_units[i])))
 
-            self.biases.append(np.random.uniform(-1, 1, size=(num_units, 1)))
+            self.biases.append(np.random.uniform(-1, 1, size=(num_units[i], 1)))
 
         # Output layer
         self.biases.append(np.random.uniform(-1, 1, size=(4, 1)))
-        self.weights.append(np.random.uniform(-1, 1, size=(num_units, 4)))
+        self.weights.append(np.random.uniform(-1, 1, size=(num_units[-1], 4)))
 
     def relu(self, a):
         return a * (a > 0)
@@ -61,7 +62,6 @@ class Net(object):
         for i, instance in enumerate(a):
             a[i] = np.exp(a[i] - np.max(a[i]))
             a[i] = a[i]/np.sum(a[i])
-            
         return a
 
     def __call__(self, X):
@@ -145,7 +145,7 @@ class Net(object):
 
             grads['W'][i] = 1/m * \
                 np.dot(self.a_states[i].T, dZ) + \
-                (lamda)*self.weights[i]
+                (lamda/m)*self.weights[i]
             grads['B'][i] = 1/m * np.sum(dZ, axis=0, keepdims=True)
             grads['B'][i] = grads['B'][i].T
 
@@ -187,7 +187,7 @@ class Optimizer(object):
 
         #raise NotImplementedError
 
-    def step(self, weights, biases, delta_weights, delta_biases):
+    def step_adam(self, weights, biases, delta_weights, delta_biases):
         '''
         Parameters
         ----------
@@ -200,7 +200,6 @@ class Optimizer(object):
 
         updated_W = []
         updated_B = []
-        # print(delta_biases[0].shape)
 
         for i in range(0, size):
 
@@ -228,8 +227,28 @@ class Optimizer(object):
         self.t += 1
 
         return updated_W, updated_B
+    
+    def step_sgd(self, weights, biases, delta_weights, delta_biases):
+        '''
+        Parameters
+        ----------
+                weights: Current weights of the network.
+                biases: Current biases of the network.
+                delta_weights: Gradients of weights with respect to loss.
+                delta_biases: Gradients of biases with respect to loss.
+        '''
+        size = len(weights)
 
-        #raise NotImplementedError
+        updated_W = []
+        updated_B = []
+
+        for i in range(0, size):
+
+            updated_W.append(
+                weights[i] - self.learning_rate * delta_weights[i])
+            updated_B.append(biases[i] - self.learning_rate * delta_biases[i])
+
+        return updated_W, updated_B
 
 
 def loss_mse(y, y_hat):
@@ -288,7 +307,7 @@ def loss_fn(y, y_hat, weights, biases, lamda):
             l2 regularization loss 
     '''
     
-    cost = cross_entropy_loss(y, y_hat) + lamda * \
+    cost = cross_entropy_loss(y, y_hat) + lamda/len(y) * \
         loss_regularization(weights, biases)
 
     return cost
@@ -335,10 +354,125 @@ def cross_entropy_loss(y, y_hat):
     return cost
 
 
+def train_early(net, optimizer, lamda, batch_size, max_epochs,
+        train_input, train_target,
+        dev_input, dev_target, patience, uid, optimize):
+    m = train_input.shape[0]
+    epoch_loss=0.
+    j = 0  # current running dev step
+    step = 0  # it increases after pass through one batch
+    prev_dev_loss = 10000000
+    epochs = 0
+    
+    while j < patience:
+        epoch_loss = 0
+        for i in range(0, m, batch_size):
+            batch_input = train_input[i : i + batch_size]
+            batch_target = train_target[i : i + batch_size]
+            
+            pred = net(batch_input)  # forward pass
+
+            # Compute gradients of loss w.r.t. weights and biases
+            dW, db = net.backward(batch_input, batch_target, lamda)
+            
+            # Get updated weights based on current weights and gradients
+            if optimize == "adam":
+                weights_updated, biases_updated = optimizer.step_adam(
+                    net.weights, net.biases, dW, db)
+            else:
+                weights_updated, biases_updated = optimizer.step_sgd(
+                    net.weights, net.biases, dW, db)
+
+            # Update model's weights and biases
+            net.weights = weights_updated
+            net.biases = biases_updated
+
+            # Compute loss for the batch
+            batch_loss = loss_fn(batch_target, pred,
+                                 net.weights, net.biases, lamda)
+            epoch_loss += batch_loss
+            
+            if step % 300 == 0:  # check dev loss and save model weights
+                dev_loss= evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda)
+                dev_acc, precisions, recalls, fscore = compute_acc(net, dev_input, dev_target, batch_size)
+                
+                print("step: {} dev fscore: {} dev loss: {} dev acc: {}".format(step, fscore, dev_loss, dev_acc))
+                if fscore > prev_dev_fscore:
+                    prev_dev_fscore = fscore
+                    # save model weights
+                    print("Saving model weights.....")
+                    with open('./models/modelclss{}.pkl'.format(uid), 'wb') as outp:
+                        pickle.dump(net, outp, pickle.HIGHEST_PROTOCOL)
+                    
+                else: j += 1 
+            
+            step += 1
+        epochs += 1
+        
+        epoch_loss = epoch_loss*batch_size/m
+        print("epoch: {} step: {} train loss: {}".format(epochs, step, epoch_loss))
+
+def train_epochs(net, optimizer, lamda, batch_size, max_epochs,
+        train_input, train_target,
+        dev_input, dev_target, patience, uid, optimize):
+    
+    m = train_input.shape[0]
+    epoch_loss=0.
+    step = 0  # it increases after pass through one batch
+    prev_dev_fscore = 0
+    
+    for epochs in range(max_epochs):
+        
+        epoch_loss = 0
+        for i in range(0, m, batch_size):
+            batch_input = train_input[i : i + batch_size]
+            batch_target = train_target[i : i + batch_size]
+            
+            pred = net(batch_input)  # forward pass
+
+            # Compute gradients of loss w.r.t. weights and biases
+            dW, db = net.backward(batch_input, batch_target, lamda)
+            
+            # Get updated weights based on current weights and gradients
+            if optimize == "adam":
+                weights_updated, biases_updated = optimizer.step_adam(
+                    net.weights, net.biases, dW, db)
+            else:
+                weights_updated, biases_updated = optimizer.step_sgd(
+                    net.weights, net.biases, dW, db)
+
+            # Update model's weights and biases
+            net.weights = weights_updated
+            net.biases = biases_updated
+
+            # Compute loss for the batch
+            batch_loss = loss_fn(batch_target, pred,
+                                 net.weights, net.biases, lamda)
+            epoch_loss += batch_loss
+            
+            if step % 300 == 0:  # check dev loss and save model weights
+                dev_loss= evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda)
+                dev_acc, precisions, recalls, fscore = compute_acc(net, dev_input, dev_target, 500)
+                
+                print("step: {} dev fscore: {} dev loss: {} dev acc: {}".format(step, fscore, dev_loss, dev_acc))
+                if fscore > prev_dev_fscore:
+                    prev_dev_fscore = fscore
+                    # save model weights
+                    print("Saving model weights.....")
+                    with open('./models/modelclss{}.pkl'.format(uid), 'wb') as outp:
+                        pickle.dump(net, outp, pickle.HIGHEST_PROTOCOL)
+            
+            step += 1
+        
+        epoch_loss = epoch_loss*batch_size/m
+        if epochs % 10 == 0:
+            train_acc, precisions, recalls, fscore = compute_acc(net, train_input, train_target, 500)
+            print("epoch: {} step: {} train loss: {} train acc : {}".format(epochs, step, epoch_loss, train_acc))
+
 def train(
         net, optimizer, lamda, batch_size, max_epochs,
         train_input, train_target,
-        dev_input, dev_target
+        dev_input, dev_target, uid, patience, optimize, early_stop
 ):
     '''
     In this function, you will perform following steps:
@@ -352,67 +486,53 @@ def train(
     for each batch in the loop.
     For this code also, you are free to heavily modify it.
     '''
-
-    m = train_input.shape[0]
-
-    for e in range(max_epochs):
-        epoch_loss = 0.
-        for i in range(0, m, batch_size):
-            batch_input = train_input[i:i+batch_size]
-            batch_target = train_target[i:i+batch_size]
-            pred = net(batch_input)
-
-            # Compute gradients of loss w.r.t. weights and biases
-            dW, db = net.backward(batch_input, batch_target, lamda)
-
-            # Get updated weights based on current weights and gradients
-            weights_updated, biases_updated = optimizer.step(
-                net.weights, net.biases, dW, db)
-
-            # Update model's weights and biases
-            net.weights = weights_updated
-            net.biases = biases_updated
-
-            # Compute loss for the batch
-            batch_loss = loss_fn(batch_target, pred,
-                                 net.weights, net.biases, lamda)
-            epoch_loss += batch_loss
-
-            #print(e, i, rmse(batch_target, pred), batch_loss)
-
-        dev_epoch_loss = evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda)
-        train_acc = compute_acc(net, train_input, train_target, batch_size)
-        dev_acc = compute_acc(net, dev_input, dev_target, batch_size)
-        print(e, epoch_loss/int(m/batch_size), dev_epoch_loss, train_acc, dev_acc)
-        #print(e, epoch_loss/int(m/batch_size), dev_epoch_loss)
-
-        # Write any early stopping conditions required (only for Part 2)
-        # Hint: You can also compute dev_rmse here and use it in the early
-        # 		stopping condition.
-
-    # After running `max_epochs` (for Part 1) epochs OR early stopping (for Part 2), compute the RMSE on dev data.
-    #dev_pred = net(dev_input)
-    #dev_rmse = rmse(dev_target, dev_pred)
-
-    #print('RMSE on dev data: {:.5f}'.format(dev_rmse))
+    if early_stop:
+        train_early(net, optimizer, lamda, batch_size, max_epochs, train_input, train_target,
+        dev_input, dev_target, patience, uid, optimize)
+    else:
+        train_epochs(net, optimizer, lamda, batch_size, max_epochs, train_input, train_target,
+        dev_input, dev_target, patience, uid, optimize)
 
     
 def compute_acc(net, data_input, data_target, batch_size):
     m = len(data_input)
     outputs = []
+    scores = {0: {"TP":0, "FP":0, "FN": 0}, 1: {"TP":0, "FP":0, "FN": 0}, 2:{"TP":0, "FP":0, "FN": 0}, 
+              3:{"TP":0, "FP":0, "FN": 0}}
     
     for i in range(0, m, batch_size):
         batch_input = data_input[i:i+batch_size]
         batch_target = data_target[i:i+batch_size]
         pred = net(batch_input)
-        #print(pred)
         outputs += [list(out) for out in pred]
         
     correct = 0
     for i in range(len(outputs)):
-        if np.argmax(outputs[i]) == np.argmax(data_target[i]): correct += 1
+        pred_out = np.argmax(outputs[i])
+        act_out = np.argmax(data_target[i])
+        if pred_out == act_out: 
+            correct += 1
+            scores[act_out]["TP"] += 1
+        else: 
+            scores[act_out]["FN"] += 1
+            scores[pred_out]["FP"] += 1
     
-    return 100*correct/len(data_target)
+    precisions = {0: 0, 1: 0, 2: 0, 3: 0}
+    for key in precisions.keys():
+        precisions[key] = scores[key]["TP"]/(scores[key]["TP"] + scores[key]["FP"] + 1e-8)
+    
+    recalls = {0: 0, 1: 0, 2: 0, 3: 0}
+    for key in precisions.keys():
+        recalls[key] = scores[key]["TP"]/(scores[key]["TP"] + scores[key]["FN"] + 1e-8)
+    
+    fscore = 0
+    for key in precisions.keys():
+        pre = precisions[key]
+        rec = recalls[key]
+        fscore += 2*pre*rec/(pre + rec + 1e-8)
+    
+    
+    return 100*correct/len(data_target), precisions, recalls, fscore/4
     
     
 def get_test_data_predictions(net, inputs):
@@ -431,7 +551,8 @@ def get_test_data_predictions(net, inputs):
             predictions (optional): Predictions obtained from forward pass
                                                             on test data, numpy array of shape m x 1
     '''
-    raise NotImplementedError
+    pred = net(inputs)
+    return pred
 
 
 def transform(x, labels):
@@ -439,18 +560,18 @@ def transform(x, labels):
     y[labels[x]] = 1
     return y
                           
-def read_data():
+def read_data(train_path, dev_path, test_path):
     '''
     Read the train, dev, and test datasets
     '''
     labels = {"Very Old": 0, "Old": 1, "New": 2, "Recent": 3}
     
     df_train = pd.read_csv(
-        "./data/train_clss.csv")
+        train_path)
     df_dev = pd.read_csv(
-        "./data/dev_clss.csv")
+        dev_path)
     df_test = pd.read_csv(
-        "./data/test_clss.csv")
+        test_path)
 
     train_x = df_train.iloc[:, 1:92]
     df_train["1"] = df_train["1"].apply(lambda x: transform(x, labels))
@@ -494,21 +615,47 @@ def evaluate_dev_loss(net, dev_input, dev_target, batch_size, lamda):
 
     return epoch_loss/int(m/batch_size)
         
+def save_predictions(net, test_input, uid):
+    labels = {"Very Old": 0, "Old": 1, "New": 2, "Recent": 3}
+    id_labels = {0:"Very Old", 1:"Old", 2:"New", 3:"Recent"}
+    
+    prediction = get_test_data_predictions(net, test_input)
+    
+    index=[]
+    for i in range(len(prediction)):
+        index.append(i+1)
+    
+    
+    datarows=[]
+    for i in range(len(prediction)):
+        row = []
+        row.append(index[i])
+        row.append(id_labels[np.argmax(prediction[i])])
+        datarows.append(row)
+    
+    final_csv = pd.DataFrame(datarows).to_csv("./models/sampleclss{}.csv".format(uid), header=['Id','Predictions'], index=False)
 
-
+    
 def main():
 
     #global NUM_FEATS
-    #NUM_FEATS = 76
     # Hyper-parameters
-    max_epochs = 500
-    batch_size = 32
+    max_epochs = 1000
+    batch_size = 64
     learning_rate = 0.001
     num_layers = 1
-    num_units = 128
-    lamda = 0.001  # Regularization Parameter
-
-    train_input, train_target, dev_input, dev_target, test_input = read_data()
+    num_units = [64]
+    lamda = 0.01  # Regularization Parameter
+    uid = 1
+    patience = 32
+    optimize = "adam"
+    
+    train_path = "./data/train_clss.csv"
+    dev_path = "./data/dev_clss.csv"
+    test_path = "./data/test_clss.csv"
+    
+    train_input, train_target, dev_input, dev_target, test_input = read_data(train_path, dev_path, test_path)
+    
     params = {}
     train_input = standard_scaler(train_input, params)
     dev_input = standard_scaler(dev_input, params)
@@ -529,9 +676,13 @@ def main():
     train(
         net, optimizer, lamda, batch_size, max_epochs,
         train_input, train_target,
-        dev_input, dev_target
+        dev_input, dev_target, uid, patience, optimize, False
     )
-    #get_test_data_predictions(net, test_input)
+    
+    with open('./models/modelclss{}.pkl'.format(uid), 'rb') as inp:
+        net = pickle.load(inp)
+    
+    save_predictions(net, test_input, uid)
 
 
 if __name__ == '__main__':
