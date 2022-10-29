@@ -5,7 +5,7 @@ import pandas as pd
 import pickle
 
 # The seed will be fixed to 42 for this assigmnet.
-np.random.seed(42)
+np.random.seed(28)
 
 NUM_FEATS = 90
 
@@ -689,7 +689,7 @@ def feature_sel_corr_matrix(train_input, train_target, dev_input, test_input):
     correlated_features = set()
     
     for i in range(len(correlation_matrix .columns)):
-        if abs(correlation_matrix.iloc[1, i]) <0.1:
+        if abs(correlation_matrix.iloc[0, i]) <0.1:
                 colname = correlation_matrix.columns[i]
                 correlated_features.add(colname)
 
@@ -708,22 +708,22 @@ def main():
 
     # Hyper-parameters
     global NUM_FEATS
-    max_epochs = 700
+    max_epochs = 1000
     batch_size = 64
     learning_rate = 0.001
     num_layers = 1
     num_units=[64]
     lamda = 0.01  # Regularization Parameter
-    uid = 166
+    uid = 172
     patience = 32
     optimize = "adam"
     
-    train_path = "./data/train_new.csv"
+    train_path = "./data/train_mapping_label.csv"
     dev_path = "./data/dev.csv"
     test_path = "./data/test.csv"
     
     train_input, train_target, dev_input, dev_target, test_input = read_data(train_path, dev_path, test_path)
-    #from sklearn.decomposition import PCA
+    from sklearn.decomposition import PCA
     
     train_input, dev_input, test_input, len_corr_features = feature_sel_corr_matrix(train_input, train_target, dev_input, test_input)
     NUM_FEATS = NUM_FEATS -(len_corr_features)
@@ -732,22 +732,24 @@ def main():
     
     
     params = {}
-    train_input = standard_scaler(train_input, params)
-    dev_input = standard_scaler(dev_input, params)
-    test_input = standard_scaler(test_input, params)
-    print(train_input.shape)
+    train_input = standard_scaler(train_input, params).to_numpy()
+    dev_input = standard_scaler(dev_input, params).to_numpy()
+    test_input = standard_scaler(test_input, params).to_numpy()
+    train_target = train_target.to_numpy()
+    dev_target = dev_target.to_numpy()
     
-#     NUM_FEATS = 65
+#    NUM_FEATS = 60
 #     pca = PCA(n_components=NUM_FEATS)
 #     pca.fit(train_input)
 #     train_input = pca.transform(train_input)
 #     dev_input = pca.transform(dev_input)
 #     test_input = pca.transform(test_input)
     
-    
     net = Net(num_layers, num_units)
     optimizer = Optimizer(learning_rate, num_layers+1)
     
+    
+    #np.random.shuffle(train_input)
     train(
         net, optimizer, lamda, batch_size, max_epochs,
         train_input, train_target,
