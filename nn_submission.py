@@ -726,11 +726,11 @@ def main():
     num_layers = 2
     num_units=[16,16]
     lamda = 0.01  # Regularization Parameter
-    uid = 179
+    uid = 180
     patience = 200
     optimize = "adam"
     
-    train_path = "./data/train_updated.csv"
+    train_path = "./data/train.csv"
     dev_path = "./data/dev.csv"
     test_path = "./data/test.csv"
     
