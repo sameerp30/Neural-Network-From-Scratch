@@ -726,7 +726,7 @@ def main():
     num_layers = 2
     num_units=[16,16]
     lamda = 0.01  # Regularization Parameter
-    uid = 1
+    uid = 179
     patience = 200
     optimize = "adam"
     
@@ -737,10 +737,10 @@ def main():
     train_input, train_target, dev_input, dev_target, test_input = read_data(train_path, dev_path, test_path)
     from sklearn.decomposition import PCA
     
-    train_input, dev_input, test_input, len_corr_features = feature_sel_corr_matrix(train_input, train_target, dev_input, test_input)
-    NUM_FEATS = NUM_FEATS -(len_corr_features)
-    print(NUM_FEATS)
-    print("********************************")
+#     train_input, dev_input, test_input, len_corr_features = feature_sel_corr_matrix(train_input, train_target, dev_input, test_input)
+#     NUM_FEATS = NUM_FEATS -(len_corr_features)
+#     print(NUM_FEATS)
+#     print("********************************")
     
     
     params = {}
@@ -769,7 +769,7 @@ def main():
     train(
         net, optimizer, lamda, batch_size, max_epochs,
         train_input, train_target,
-        dev_input, dev_target, patience, uid, optimize, True)
+        dev_input, dev_target, patience, uid, optimize, False)
     
     with open('./models/model{}.pkl'.format(uid), 'rb') as inp:
         net = pickle.load(inp)
