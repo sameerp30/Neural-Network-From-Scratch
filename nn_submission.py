@@ -6,7 +6,10 @@ import pickle
 
 # The seed will be fixed to 42 for this assigmnet.
 np.random.seed(28)
-
+minscale=0
+maxdata=2010
+mindata=1922
+maxscale=50
 NUM_FEATS = 90
 
 
@@ -662,8 +665,21 @@ def save_predictions_for_analysis(net, dev_input, dev_target, uid):
     final_csv = pd.DataFrame(datarows).to_csv("./models/sample_analysis{}.csv".format(uid), header=['Id','Predictions','labels'], index=False)
 
 
+def scale_prediction(prediction):
+    pred=[]
+    for i in range(len(prediction)):
+        pred.append((prediction[i] - minscale)*(maxdata-mindata)/maxscale + mindata)
+    return pred
+
+def scale(target):
+    tar=[]
+    for i in range(len(target)):
+        tar.append((target[i] - mindata)/(maxdata-mindata)*maxscale + minscale)
+    return tar
+
 def save_predictions(net, test_input, uid):
     prediction = get_test_data_predictions(net, test_input)
+    prediction = scale_prediction(prediction)
     int_prediction = []
     
     for i in range(len(prediction)):
@@ -682,43 +698,39 @@ def save_predictions(net, test_input, uid):
     
     final_csv = pd.DataFrame(datarows).to_csv("./models/sample{}.csv".format(uid), header=['Id','Predictions'], index=False)
 
-def feature_sel_corr_matrix(train_input, train_target, dev_input, test_input):
-    
-    train_ip = pd.concat([train_target,train_input], axis = 1)
-    correlation_matrix = train_ip.corr()
+def feature_sel_corr_matrix(train_input,train_target,dev_input,test_input):
+    train_ip=pd.concat([train_target,train_input], axis = 1)
+    correlation_matrix=train_ip.corr()
     correlated_features = set()
-    
     for i in range(len(correlation_matrix .columns)):
-        if abs(correlation_matrix.iloc[0, i]) <0.1:
+        for j in range(i+1,len(correlation_matrix .columns)):
+            if (correlation_matrix.iloc[i, j]) > 0.2 and (correlation_matrix.columns[j] not in correlated_features) and (abs(correlation_matrix.iloc[0, i]) < 0.1):
                 colname = correlation_matrix.columns[i]
                 correlated_features.add(colname)
-
             
     len_corr_features=len(correlated_features)
-    
     print(correlated_features)
-    
     train_input.drop(labels=correlated_features, axis=1, inplace=True)
     dev_input.drop(labels=correlated_features, axis=1, inplace=True)
     test_input.drop(labels=correlated_features, axis=1, inplace=True)
     
-    return train_input,dev_input,test_input,len_corr_features    
+    return train_input,dev_input,test_input,len_corr_features
     
 def main():
 
     # Hyper-parameters
     global NUM_FEATS
     max_epochs = 1000
-    batch_size = 64
+    batch_size = 32
     learning_rate = 0.001
-    num_layers = 1
-    num_units=[64]
+    num_layers = 2
+    num_units=[16,16]
     lamda = 0.01  # Regularization Parameter
-    uid = 172
-    patience = 32
+    uid = 1
+    patience = 200
     optimize = "adam"
     
-    train_path = "./data/train_mapping_label.csv"
+    train_path = "./data/train_updated.csv"
     dev_path = "./data/dev.csv"
     test_path = "./data/test.csv"
     
@@ -738,6 +750,10 @@ def main():
     train_target = train_target.to_numpy()
     dev_target = dev_target.to_numpy()
     
+    train_target=scale(train_target)
+    dev_target=scale(dev_target)
+ 
+    
 #    NUM_FEATS = 60
 #     pca = PCA(n_components=NUM_FEATS)
 #     pca.fit(train_input)
@@ -753,7 +769,7 @@ def main():
     train(
         net, optimizer, lamda, batch_size, max_epochs,
         train_input, train_target,
-        dev_input, dev_target, patience, uid, optimize, False)
+        dev_input, dev_target, patience, uid, optimize, True)
     
     with open('./models/model{}.pkl'.format(uid), 'rb') as inp:
         net = pickle.load(inp)
