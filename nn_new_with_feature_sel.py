@@ -453,10 +453,10 @@ def feature_sel_corr_matrix(train_input,train_target,dev_input,test_input):
     correlation_matrix=train_ip.corr()
     correlated_features = set()
     for i in range(len(correlation_matrix .columns)):
-        if abs(correlation_matrix.iloc[1, i]) <0.1:
+        for j in range(i+1,len(correlation_matrix .columns)):
+            if (correlation_matrix.iloc[i, j]) > 0.2 and (correlation_matrix.columns[j] not in correlated_features) and (abs(correlation_matrix.iloc[0, i]) < 0.1): 
                 colname = correlation_matrix.columns[i]
                 correlated_features.add(colname)
-
             
     len_corr_features=len(correlated_features)
     print(correlated_features)
