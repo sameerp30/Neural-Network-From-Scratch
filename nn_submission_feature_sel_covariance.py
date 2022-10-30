@@ -733,9 +733,9 @@ def main():
     patience = 200
     optimize = "adam"
     
-    train_path = "../input/fml-assignment/train.csv"
-    dev_path = "../input/fml-assignment/dev.csv"
-    test_path = "../input/fml-assignment/test.csv"
+    train_path = "./data/train.csv"
+    dev_path = "./data/dev.csv"
+    test_path = "./data/test.csv"
     
     train_input, train_target, dev_input, dev_target, test_input = read_data(train_path, dev_path, test_path)
     from sklearn.decomposition import PCA
