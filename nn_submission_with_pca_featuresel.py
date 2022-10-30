@@ -731,8 +731,7 @@ def PCA_t(train_input, dev_input, test_input , num_components):
     sorted_eigenvectors = eigen_vectors[:,sorted_index]
     
     eigenvector_subset = sorted_eigenvectors[:,0:num_components]
-     
-    #Step-6
+   
     reduced_train = np.dot(eigenvector_subset.transpose() , train_input_pca.transpose() ).transpose()
     reduced_dev= np.dot(eigenvector_subset.transpose() , dev_input_pca.transpose() ).transpose()
     reduced_test = np.dot(eigenvector_subset.transpose() , test_input_pca.transpose() ).transpose()
@@ -761,12 +760,6 @@ def main():
     test_path = "./data/test.csv"
     
     train_input, train_target, dev_input, dev_target, test_input = read_data(train_path, dev_path, test_path)
-    from sklearn.decomposition import PCA
-    
-#     train_input, dev_input, test_input, len_corr_features = feature_sel_corr_matrix(train_input, train_target, dev_input, test_input)
-#     NUM_FEATS = NUM_FEATS -(len_corr_features)
-#     print(NUM_FEATS)
-#     print("********************************")
     
     
     params = {}
